@@ -8,18 +8,22 @@ import re
 from typing import Dict, List, Optional
 from urllib.parse import urlparse
 
-from .ai_provider import AIProvider
-from .prompts import (
+import sys
+import os
+sys.path.insert(0, os.path.dirname(__file__))
+
+from ai_provider import AIProvider
+from prompts import (
     BRIEF_GENERATION_PROMPT,
     build_brief_prompt,
     get_client_specific_instructions
 )
-from .client_guidelines import (
+from client_guidelines import (
     get_client_guidelines,
     get_client_name_from_url,
     get_language_preference,
 )
-from .validators import (
+from validators import (
     validate_brief,
     fix_brief_issues,
 )
