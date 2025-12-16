@@ -1,0 +1,8 @@
+Add full Supabase integration and enhanced features
+
+- Complete Supabase client management with load/create/delete functionality
+- Enhanced document formatter with professional table-based layout
+- Multi-AI provider support (OpenAI, Claude, Grok, Perplexity, Mistral)
+- Updated requirements and configuration files
+- Add environment variables for deployment testing
+- Add quick start documentation

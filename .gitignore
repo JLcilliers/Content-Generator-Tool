@@ -47,3 +47,6 @@ output_briefs/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Special files
+NUL
