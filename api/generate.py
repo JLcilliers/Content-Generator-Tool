@@ -66,11 +66,13 @@ class handler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps(brief_data).encode())
 
         except Exception as e:
+            import traceback
+            error_detail = traceback.format_exc()
             self.send_response(500)
             self.send_header('Content-Type', 'application/json')
             self.send_header('Access-Control-Allow-Origin', '*')
             self.end_headers()
-            self.wfile.write(json.dumps({'error': str(e)}).encode())
+            self.wfile.write(json.dumps({'error': str(e), 'detail': error_detail}).encode())
 
     def do_OPTIONS(self):
         self.send_response(200)
