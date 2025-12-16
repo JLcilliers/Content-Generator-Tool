@@ -1,12 +1,13 @@
 """
 Batch API - Processes multiple briefs from Excel upload
-Uses streaming response for progress updates
+Returns ZIP file as base64 for serverless compatibility
 """
 import json
 import sys
 import os
 import zipfile
 import io
+import base64
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 
@@ -29,29 +30,13 @@ class handler(BaseHTTPRequestHandler):
             if not items:
                 raise ValueError("No items to process")
 
-            # Start streaming response
-            self.send_response(200)
-            self.send_header('Content-Type', 'application/x-ndjson')
-            self.send_header('Access-Control-Allow-Origin', '*')
-            self.send_header('Transfer-Encoding', 'chunked')
-            self.end_headers()
-
-            documents = []
+            # Process all items and collect documents
+            documents = []  # List of (filename, bytes) tuples
             results = []
             total = len(items)
 
             for idx, item in enumerate(items):
                 current = idx + 1
-                progress = int((current / total) * 100)
-
-                # Send progress update
-                progress_msg = json.dumps({
-                    'type': 'progress',
-                    'progress': progress,
-                    'current': f"{current}/{total}: {item.get('topic', 'Item')}"
-                })
-                self.wfile.write(f"{progress_msg}\n".encode())
-                self.wfile.flush()
 
                 try:
                     researcher = WebResearcher()
@@ -77,58 +62,62 @@ class handler(BaseHTTPRequestHandler):
 
                     # Create document
                     doc_path = formatter.create_brief_document(brief_data)
-                    documents.append(doc_path)
 
-                    result = {
+                    # Read document bytes
+                    with open(doc_path, 'rb') as f:
+                        doc_bytes = f.read()
+
+                    documents.append((os.path.basename(doc_path), doc_bytes))
+
+                    results.append({
                         'row': item.get('row', idx + 1),
                         'topic': item['topic'],
                         'status': 'success'
-                    }
-                    results.append(result)
-
-                    # Send result update
-                    result_msg = json.dumps({'type': 'result', 'result': result})
-                    self.wfile.write(f"{result_msg}\n".encode())
-                    self.wfile.flush()
+                    })
 
                 except Exception as e:
-                    # Send error and stop
-                    error_msg = json.dumps({
-                        'type': 'error',
-                        'error': f"Error on row {item.get('row', idx + 1)} ({item.get('topic', 'Item')}): {str(e)}"
+                    results.append({
+                        'row': item.get('row', idx + 1),
+                        'topic': item.get('topic', 'Unknown'),
+                        'status': 'error',
+                        'error': str(e)
                     })
-                    self.wfile.write(f"{error_msg}\n".encode())
-                    self.wfile.flush()
-                    return
 
-            # Create ZIP archive
-            if documents:
-                zip_buffer = io.BytesIO()
-                with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-                    for doc_path in documents:
-                        if os.path.exists(doc_path):
-                            zip_file.write(doc_path, os.path.basename(doc_path))
+            # Create ZIP archive in memory
+            zip_buffer = io.BytesIO()
+            with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+                for filename, doc_bytes in documents:
+                    zip_file.writestr(filename, doc_bytes)
 
-                # Save ZIP to temp
-                zip_path = '/tmp/briefs/batch_briefs.zip'
-                os.makedirs(os.path.dirname(zip_path), exist_ok=True)
-                with open(zip_path, 'wb') as f:
-                    f.write(zip_buffer.getvalue())
+            zip_buffer.seek(0)
+            zip_base64 = base64.b64encode(zip_buffer.getvalue()).decode('utf-8')
 
-                # Send completion with ZIP URL
-                complete_msg = json.dumps({
-                    'type': 'complete',
-                    'zipUrl': f'/api/download?path={zip_path}'
-                })
-                self.wfile.write(f"{complete_msg}\n".encode())
-                self.wfile.flush()
+            # Send response with all data
+            response = {
+                'results': results,
+                'zip_base64': zip_base64,
+                'zip_filename': 'content_briefs.zip',
+                'success_count': len([r for r in results if r['status'] == 'success']),
+                'error_count': len([r for r in results if r['status'] == 'error']),
+                'total': total
+            }
+
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            self.wfile.write(json.dumps(response).encode())
 
         except Exception as e:
+            import traceback
             self.send_response(500)
             self.send_header('Content-Type', 'application/json')
             self.send_header('Access-Control-Allow-Origin', '*')
             self.end_headers()
-            self.wfile.write(json.dumps({'error': str(e)}).encode())
+            self.wfile.write(json.dumps({
+                'error': str(e),
+                'detail': traceback.format_exc()
+            }).encode())
 
     def do_OPTIONS(self):
         self.send_response(200)

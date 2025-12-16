@@ -27,13 +27,36 @@ export default function BatchPage() {
   const [progress, setProgress] = useState(0)
   const [currentItem, setCurrentItem] = useState('')
   const [error, setError] = useState<string | null>(null)
-  const [zipUrl, setZipUrl] = useState<string | null>(null)
+  const [zipData, setZipData] = useState<{ base64: string; filename: string } | null>(null)
 
   const handleFileUpload = (parsedItems: BatchItem[]) => {
     setItems(parsedItems)
     setResults([])
     setError(null)
-    setZipUrl(null)
+    setZipData(null)
+  }
+
+  const handleDownloadZip = () => {
+    if (zipData) {
+      // Decode base64 and create blob
+      const byteCharacters = atob(zipData.base64)
+      const byteNumbers = new Array(byteCharacters.length)
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i)
+      }
+      const byteArray = new Uint8Array(byteNumbers)
+      const blob = new Blob([byteArray], { type: 'application/zip' })
+
+      // Create download link
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = zipData.filename
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+    }
   }
 
   const handleGenerate = async () => {
@@ -42,7 +65,9 @@ export default function BatchPage() {
     setIsProcessing(true)
     setError(null)
     setResults([])
-    setZipUrl(null)
+    setZipData(null)
+    setProgress(0)
+    setCurrentItem('Starting batch processing...')
 
     try {
       const response = await fetch('/api/batch', {
@@ -51,43 +76,25 @@ export default function BatchPage() {
         body: JSON.stringify({ provider, items }),
       })
 
-      // Handle streaming response for progress updates
-      const reader = response.body?.getReader()
-      const decoder = new TextDecoder()
-
-      if (!reader) throw new Error('No response body')
-
-      let buffer = ''
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || ''
-
-        for (const line of lines) {
-          if (!line.trim()) continue
-          try {
-            const data = JSON.parse(line)
-
-            if (data.type === 'progress') {
-              setProgress(data.progress)
-              setCurrentItem(data.current)
-            } else if (data.type === 'result') {
-              setResults(prev => [...prev, data.result])
-            } else if (data.type === 'complete') {
-              setZipUrl(data.zipUrl)
-            } else if (data.type === 'error') {
-              throw new Error(data.error)
-            }
-          } catch (e) {
-            // Skip invalid JSON lines
-          }
-        }
+      if (!response.ok) {
+        const err = await response.json()
+        throw new Error(err.error || 'Batch processing failed')
       }
 
+      const data = await response.json()
+
+      // Update results
+      setResults(data.results || [])
       setProgress(100)
+      setCurrentItem('Complete!')
+
+      // Store ZIP data for download
+      if (data.zip_base64) {
+        setZipData({
+          base64: data.zip_base64,
+          filename: data.zip_filename || 'content_briefs.zip'
+        })
+      }
 
     } catch (err: any) {
       setError(err.message || 'An error occurred')
@@ -133,26 +140,28 @@ export default function BatchPage() {
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                 </svg>
-                Processing {currentItem}...
+                Processing... (this may take a few minutes)
               </>
             ) : (
               <>Generate All Briefs ({items.length})</>
             )}
           </button>
 
-          {/* Progress Bar */}
+          {/* Progress Indicator */}
           {isProcessing && (
             <div className="mt-4">
               <div className="flex justify-between text-sm text-gray-600 mb-1">
                 <span>{currentItem}</span>
-                <span>{progress}%</span>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2">
                 <div
-                  className="bg-primary-600 h-2 rounded-full transition-all duration-300"
-                  style={{ width: `${progress}%` }}
+                  className="bg-primary-600 h-2 rounded-full transition-all duration-300 animate-pulse"
+                  style={{ width: '100%' }}
                 />
               </div>
+              <p className="text-sm text-gray-500 mt-2">
+                Processing {items.length} briefs. Please wait...
+              </p>
             </div>
           )}
         </div>
@@ -174,7 +183,7 @@ export default function BatchPage() {
           {/* Summary */}
           <div className={results.every(r => r.status === 'success') ? 'status-success' : 'status-warning'}>
             <p className="font-medium">
-              {results.filter(r => r.status === 'success').length} of {items.length} briefs generated successfully
+              {results.filter(r => r.status === 'success').length} of {results.length} briefs generated successfully
             </p>
           </div>
 
@@ -207,18 +216,17 @@ export default function BatchPage() {
           </div>
 
           {/* Download Button */}
-          {zipUrl && (
+          {zipData && (
             <div className="mt-6">
-              <a
-                href={zipUrl}
-                download="content_briefs.zip"
+              <button
+                onClick={handleDownloadZip}
                 className="btn-primary inline-flex"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                 </svg>
                 Download All Briefs (ZIP)
-              </a>
+              </button>
             </div>
           )}
         </div>
