@@ -20,7 +20,7 @@ class AIProvider:
 
     # Latest models as of December 2025
     PROVIDER_MODELS = {
-        'openai': 'gpt-4.1',              # GPT-4.1: 1M context, improved coding & instruction following
+        'openai': 'gpt-5.2',              # GPT-5.2: Latest flagship, 400K context, best for professional tasks
         'claude': 'claude-opus-4-5-20251101',  # Claude Opus 4.5: Best for coding, agents, complex tasks
         'grok': 'grok-4',                 # Grok 4: Latest stable with strong reasoning
         'perplexity': 'sonar-pro',        # Sonar Pro: Real-time search with citations
@@ -220,7 +220,7 @@ class AIProvider:
     def get_provider_display_name(provider: str) -> str:
         """Get display name for provider."""
         names = {
-            'openai': 'OpenAI GPT-4.1',
+            'openai': 'OpenAI GPT-5.2',
             'claude': 'Claude Opus 4.5',
             'grok': 'Grok 4',
             'perplexity': 'Perplexity Sonar Pro',
