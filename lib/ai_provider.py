@@ -11,13 +11,13 @@ import requests
 class AIProvider:
     """Abstract AI provider supporting multiple services."""
 
-    # Latest models as of December 2025
+    # Latest models
     PROVIDER_MODELS = {
-        'openai': 'gpt-5.2',              # GPT-5.2: Latest flagship, 400K context
-        'claude': 'claude-opus-4-5-20251101',  # Claude Opus 4.5: Best for complex tasks
-        'grok': 'grok-4',                 # Grok 4: Latest stable with strong reasoning
+        'openai': 'gpt-4o',               # GPT-4o: Latest flagship model
+        'claude': 'claude-sonnet-4-20250514',  # Claude Sonnet 4: Fast and capable
+        'grok': 'grok-2-latest',          # Grok 2: Latest stable
         'perplexity': 'sonar-pro',        # Sonar Pro: Real-time search with citations
-        'mistral': 'mistral-large-latest' # Mistral Large 3: 41B active params
+        'mistral': 'mistral-large-latest' # Mistral Large: Latest flagship
     }
 
     def __init__(self, provider: Optional[str] = None):
