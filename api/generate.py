@@ -55,8 +55,15 @@ class handler(BaseHTTPRequestHandler):
             formatter = DocumentFormatter()
             doc_path = formatter.create_brief_document(brief_data)
 
-            # Add document URL to response
-            brief_data['document_url'] = f'/api/download?path={doc_path}'
+            # Read document and encode as base64 for download
+            import base64
+            with open(doc_path, 'rb') as f:
+                doc_bytes = f.read()
+            doc_base64 = base64.b64encode(doc_bytes).decode('utf-8')
+
+            # Add document data to response
+            brief_data['document_base64'] = doc_base64
+            brief_data['document_filename'] = os.path.basename(doc_path)
 
             # Send response
             self.send_response(200)

@@ -9,6 +9,31 @@ interface BriefPreviewProps {
 export default function BriefPreview({ data }: BriefPreviewProps) {
   const [activeTab, setActiveTab] = useState('overview')
 
+  const handleDownload = () => {
+    if (data.document_base64 && data.document_filename) {
+      // Decode base64 and create blob
+      const byteCharacters = atob(data.document_base64)
+      const byteNumbers = new Array(byteCharacters.length)
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i)
+      }
+      const byteArray = new Uint8Array(byteNumbers)
+      const blob = new Blob([byteArray], {
+        type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      })
+
+      // Create download link
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = data.document_filename
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+    }
+  }
+
   const tabs = [
     { id: 'overview', label: 'Overview' },
     { id: 'structure', label: 'Structure' },
@@ -27,17 +52,16 @@ export default function BriefPreview({ data }: BriefPreviewProps) {
         <h2 className="text-xl font-bold text-gray-900">Generated Content Brief</h2>
 
         {/* Download Button */}
-        {data.document_url && (
-          <a
-            href={data.document_url}
-            download
+        {data.document_base64 && (
+          <button
+            onClick={handleDownload}
             className="btn-primary"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
             </svg>
             Download Word Document
-          </a>
+          </button>
         )}
       </div>
 
