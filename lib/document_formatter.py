@@ -34,7 +34,8 @@ class DocumentFormatter:
         self.black = RGBColor(0, 0, 0)
         self.gray = RGBColor(102, 102, 102)
         self.link_color = RGBColor(5, 99, 193)
-        self.border_color = "DDDDDD"
+        self.border_color = "E0E0E0"      # Light gray for table borders
+        self.divider_color = "CCCCCC"     # Subtle gray for section dividers
 
         # Column widths (in DXA/twips - 1440 = 1 inch)
         self.label_width = 2500   # ~1.74 inches
@@ -77,11 +78,17 @@ class DocumentFormatter:
         # Build document sections
         self._add_title_banner(doc, brief_data)
         self._add_client_site(doc, brief_data)
+        self._add_section_divider(doc)
         self._add_keywords_table(doc, brief_data)
+        self._add_section_divider(doc)
         self._add_web_page_structure_table(doc, brief_data)
+        self._add_section_divider(doc)
         self._add_internal_linking(doc, brief_data)
+        self._add_section_divider(doc)
         self._add_writing_guidelines_table(doc, brief_data)
+        self._add_section_divider(doc)
         self._add_headings_section(doc, brief_data)
+        self._add_section_divider(doc)
         self._add_faqs_section(doc, brief_data)
 
         # Save document
@@ -330,6 +337,22 @@ class DocumentFormatter:
 
         doc.add_paragraph()
 
+    def _add_section_divider(self, doc: Document):
+        """Add a subtle horizontal divider line between sections."""
+        para = doc.add_paragraph()
+        para.paragraph_format.space_before = Pt(6)
+        para.paragraph_format.space_after = Pt(6)
+
+        # Add bottom border to create divider effect
+        pPr = para._p.get_or_add_pPr()
+        pBdr = OxmlElement('w:pBdr')
+        bottom = OxmlElement('w:bottom')
+        bottom.set(qn('w:val'), 'single')
+        bottom.set(qn('w:sz'), '4')
+        bottom.set(qn('w:color'), self.divider_color)
+        pBdr.append(bottom)
+        pPr.append(pBdr)
+
     def _style_data_table(self, table):
         """Apply consistent styling to data tables."""
         self._set_table_width(table, self.full_width)
@@ -367,7 +390,7 @@ class DocumentFormatter:
             run.font.bold = True
             self._set_cell_background(cell, self.label_bg)
 
-        self._set_cell_padding(cell, top=100, bottom=100, left=100, right=100)
+        self._set_cell_padding(cell, top=150, bottom=150, left=150, right=150)
 
     def _format_list(self, items: List[str]) -> str:
         """Format a list as bullet points."""
