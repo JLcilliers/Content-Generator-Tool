@@ -18,12 +18,13 @@ except ImportError:
 class AIProvider:
     """Abstract AI provider supporting multiple services."""
 
+    # Latest models as of December 2025
     PROVIDER_MODELS = {
-        'openai': 'gpt-4o',
-        'claude': 'claude-3-5-sonnet-20241022',
-        'grok': 'grok-beta',
-        'perplexity': 'llama-3.1-sonar-large-128k-online',
-        'mistral': 'mistral-large-latest'
+        'openai': 'gpt-4.1',              # GPT-4.1: 1M context, improved coding & instruction following
+        'claude': 'claude-opus-4-5-20251101',  # Claude Opus 4.5: Best for coding, agents, complex tasks
+        'grok': 'grok-4',                 # Grok 4: Latest stable with strong reasoning
+        'perplexity': 'sonar-pro',        # Sonar Pro: Real-time search with citations
+        'mistral': 'mistral-large-latest' # Mistral Large 3: 41B active params, 256K context
     }
 
     def __init__(self, provider: Optional[str] = None):
@@ -219,10 +220,10 @@ class AIProvider:
     def get_provider_display_name(provider: str) -> str:
         """Get display name for provider."""
         names = {
-            'openai': 'OpenAI GPT-4o',
-            'claude': 'Claude 3.5 Sonnet',
-            'grok': 'Grok',
-            'perplexity': 'Perplexity Sonar',
-            'mistral': 'Mistral Large'
+            'openai': 'OpenAI GPT-4.1',
+            'claude': 'Claude Opus 4.5',
+            'grok': 'Grok 4',
+            'perplexity': 'Perplexity Sonar Pro',
+            'mistral': 'Mistral Large 3'
         }
         return names.get(provider, provider.title())
