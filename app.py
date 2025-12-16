@@ -5,7 +5,16 @@ Main web interface for generating AI-powered content briefs.
 
 import streamlit as st
 import os
+import zipfile
+import io
 from datetime import datetime
+
+# Excel processing
+try:
+    from openpyxl import load_workbook
+    EXCEL_AVAILABLE = True
+except ImportError:
+    EXCEL_AVAILABLE = False
 
 # Load environment variables
 try:
@@ -93,6 +102,7 @@ st.markdown("""
 
 def init_session_state():
     """Initialize session state variables."""
+    # Single brief mode
     if 'brief_data' not in st.session_state:
         st.session_state.brief_data = None
     if 'research_data' not in st.session_state:
@@ -103,6 +113,20 @@ def init_session_state():
         st.session_state.generation_complete = False
     if 'document_path' not in st.session_state:
         st.session_state.document_path = None
+
+    # Batch mode
+    if 'batch_items' not in st.session_state:
+        st.session_state.batch_items = []
+    if 'batch_results' not in st.session_state:
+        st.session_state.batch_results = []
+    if 'batch_documents' not in st.session_state:
+        st.session_state.batch_documents = []
+    if 'batch_complete' not in st.session_state:
+        st.session_state.batch_complete = False
+    if 'batch_error' not in st.session_state:
+        st.session_state.batch_error = None
+    if 'batch_zip_data' not in st.session_state:
+        st.session_state.batch_zip_data = None
 
 
 def get_available_providers():
@@ -123,11 +147,11 @@ def render_sidebar():
             st.stop()
 
         provider_names = {
-            'openai': 'OpenAI GPT-4o',
-            'claude': 'Claude 3.5 Sonnet',
-            'grok': 'Grok',
-            'perplexity': 'Perplexity Sonar',
-            'mistral': 'Mistral Large'
+            'openai': 'OpenAI GPT-5.2',
+            'claude': 'Claude Opus 4.5',
+            'grok': 'Grok 4',
+            'perplexity': 'Perplexity Sonar Pro',
+            'mistral': 'Mistral Large 3'
         }
 
         provider_options = [provider_names.get(p, p) for p in available_providers]
@@ -500,6 +524,301 @@ def render_results():
         st.code(markdown_brief, language="markdown")
 
 
+def parse_excel_file(uploaded_file):
+    """Parse uploaded Excel file and extract brief items.
+
+    Expected format:
+    Column A: Website URL
+    Column B: Topic
+    Column C: Primary Keyword
+    Column D: Secondary Keyword 1
+    Column E: Secondary Keyword 2
+    Column F: Secondary Keyword 3
+    """
+    items = []
+
+    try:
+        workbook = load_workbook(uploaded_file, read_only=True, data_only=True)
+        sheet = workbook.active
+
+        # Skip header row, process data rows
+        for row_num, row in enumerate(sheet.iter_rows(min_row=2, values_only=True), start=2):
+            # Skip empty rows
+            if not row or not row[0]:
+                continue
+
+            url = str(row[0]).strip() if row[0] else ''
+            topic = str(row[1]).strip() if len(row) > 1 and row[1] else ''
+            primary_kw = str(row[2]).strip() if len(row) > 2 and row[2] else ''
+            secondary_kw1 = str(row[3]).strip() if len(row) > 3 and row[3] else ''
+            secondary_kw2 = str(row[4]).strip() if len(row) > 4 and row[4] else ''
+            secondary_kw3 = str(row[5]).strip() if len(row) > 5 and row[5] else ''
+
+            # Validate required fields
+            if not url or not topic or not primary_kw:
+                continue
+
+            # Build secondary keywords list (filter out empty)
+            secondary_keywords = [kw for kw in [secondary_kw1, secondary_kw2, secondary_kw3] if kw]
+
+            items.append({
+                'row': row_num,
+                'url': url,
+                'topic': topic,
+                'primary_keyword': primary_kw,
+                'secondary_keywords': secondary_keywords
+            })
+
+        workbook.close()
+
+    except Exception as e:
+        raise ValueError(f"Failed to parse Excel file: {str(e)}")
+
+    return items
+
+
+def process_batch(items: list, selected_provider: str, progress_bar, status_text):
+    """Process batch of brief items and generate documents.
+
+    Returns:
+        tuple: (documents list, error message or None)
+    """
+    documents = []
+    results = []
+
+    total = len(items)
+
+    for idx, item in enumerate(items):
+        current = idx + 1
+        progress = int((current / total) * 100)
+
+        status_text.text(f"Processing {current}/{total}: {item['topic']}")
+        progress_bar.progress(progress)
+
+        try:
+            # Initialize components
+            researcher = WebResearcher()
+            generator = BriefGenerator(provider=selected_provider)
+            formatter = DocumentFormatter()
+
+            # Step 1: Web research
+            research_data = researcher.research_website(item['url'], item['topic'])
+
+            # Step 2: Find internal links
+            all_keywords = [item['primary_keyword']] + item['secondary_keywords']
+            internal_links = researcher.find_internal_links(item['url'], item['topic'], all_keywords)
+
+            # Step 3: Generate brief
+            brief_data = generator.generate_brief(
+                url=item['url'],
+                topic=item['topic'],
+                primary_keyword=item['primary_keyword'],
+                secondary_keywords=item['secondary_keywords'],
+                internal_links=internal_links,
+                website_research=research_data
+            )
+
+            # Step 4: Create document
+            doc_path = formatter.create_brief_document(brief_data)
+
+            documents.append(doc_path)
+            results.append({
+                'row': item['row'],
+                'topic': item['topic'],
+                'status': 'success',
+                'path': doc_path
+            })
+
+        except Exception as e:
+            error_msg = f"Error on row {item['row']} ({item['topic']}): {str(e)}"
+            return documents, results, error_msg
+
+    return documents, results, None
+
+
+def create_zip_archive(document_paths: list) -> bytes:
+    """Create a ZIP archive containing all generated documents."""
+    zip_buffer = io.BytesIO()
+
+    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+        for doc_path in document_paths:
+            if os.path.exists(doc_path):
+                # Use just the filename in the ZIP
+                zip_file.write(doc_path, os.path.basename(doc_path))
+
+    zip_buffer.seek(0)
+    return zip_buffer.getvalue()
+
+
+def render_batch_form(selected_provider: str):
+    """Render the batch upload form for processing multiple briefs."""
+    st.markdown('<p class="main-header">📊 Batch Brief Generator</p>', unsafe_allow_html=True)
+
+    st.markdown("""
+    Upload an Excel file to generate multiple content briefs at once.
+    All briefs will be bundled into a ZIP file for download.
+    """)
+
+    # Check if Excel processing is available
+    if not EXCEL_AVAILABLE:
+        st.error("Excel processing not available. Please install openpyxl: `pip install openpyxl`")
+        return
+
+    # File format instructions
+    with st.expander("Excel File Format", expanded=True):
+        st.markdown("""
+        Your Excel file should have the following columns:
+
+        | Column A | Column B | Column C | Column D | Column E | Column F |
+        |----------|----------|----------|----------|----------|----------|
+        | Website URL | Topic | Primary Keyword | Secondary KW 1 | Secondary KW 2 | Secondary KW 3 |
+
+        **Notes:**
+        - First row should be headers (will be skipped)
+        - Columns A, B, C are required
+        - Columns D, E, F are optional secondary keywords
+        - Empty rows will be skipped
+        """)
+
+    # File uploader
+    uploaded_file = st.file_uploader(
+        "Upload Excel File",
+        type=['xlsx'],
+        help="Upload an .xlsx file with your brief data"
+    )
+
+    if uploaded_file:
+        # Parse the file
+        try:
+            items = parse_excel_file(uploaded_file)
+            st.session_state.batch_items = items
+
+            if not items:
+                st.warning("No valid rows found in the Excel file. Please check the format.")
+                return
+
+            st.success(f"Found {len(items)} briefs to generate")
+
+            # Preview table
+            st.markdown("### Preview")
+            preview_data = []
+            for item in items:
+                preview_data.append({
+                    'Row': item['row'],
+                    'URL': item['url'][:50] + '...' if len(item['url']) > 50 else item['url'],
+                    'Topic': item['topic'],
+                    'Primary KW': item['primary_keyword'],
+                    'Secondary KWs': ', '.join(item['secondary_keywords'])
+                })
+            st.dataframe(preview_data, use_container_width=True)
+
+        except ValueError as e:
+            st.error(str(e))
+            return
+
+    st.markdown("---")
+
+    # Generate button
+    col1, col2, col3 = st.columns([1, 2, 1])
+
+    with col2:
+        generate_batch = st.button(
+            "🚀 Generate All Briefs",
+            type="primary",
+            use_container_width=True,
+            disabled=not st.session_state.batch_items
+        )
+
+    if generate_batch and st.session_state.batch_items:
+        # Reset batch state
+        st.session_state.batch_complete = False
+        st.session_state.batch_error = None
+        st.session_state.batch_documents = []
+        st.session_state.batch_results = []
+        st.session_state.batch_zip_data = None
+
+        # Process batch
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+
+        with st.spinner("Processing batch..."):
+            documents, results, error = process_batch(
+                st.session_state.batch_items,
+                selected_provider,
+                progress_bar,
+                status_text
+            )
+
+            st.session_state.batch_documents = documents
+            st.session_state.batch_results = results
+
+            if error:
+                st.session_state.batch_error = error
+                progress_bar.empty()
+                status_text.empty()
+                st.error(f"Batch processing stopped: {error}")
+            else:
+                # Create ZIP archive
+                if documents:
+                    st.session_state.batch_zip_data = create_zip_archive(documents)
+                    st.session_state.batch_complete = True
+
+                progress_bar.progress(100)
+                status_text.text("Complete!")
+
+    # Show results
+    render_batch_results()
+
+
+def render_batch_results():
+    """Render batch processing results."""
+    if not st.session_state.batch_results:
+        return
+
+    st.markdown("---")
+    st.markdown("### Results")
+
+    # Summary
+    total = len(st.session_state.batch_items)
+    completed = len(st.session_state.batch_results)
+
+    if st.session_state.batch_error:
+        st.markdown(f"""
+        <div class="warning-box">
+            <strong>Partial Completion:</strong> {completed}/{total} briefs generated before error
+        </div>
+        """, unsafe_allow_html=True)
+    elif st.session_state.batch_complete:
+        st.markdown(f"""
+        <div class="success-box">
+            <strong>Success!</strong> All {completed} briefs generated successfully
+        </div>
+        """, unsafe_allow_html=True)
+
+    # Results table
+    results_data = []
+    for result in st.session_state.batch_results:
+        results_data.append({
+            'Row': result['row'],
+            'Topic': result['topic'],
+            'Status': '✅ Success' if result['status'] == 'success' else '❌ Failed'
+        })
+
+    if results_data:
+        st.dataframe(results_data, use_container_width=True)
+
+    # Download ZIP button
+    if st.session_state.batch_zip_data:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        st.download_button(
+            label="📥 Download All Briefs (ZIP)",
+            data=st.session_state.batch_zip_data,
+            file_name=f"content_briefs_{timestamp}.zip",
+            mime="application/zip",
+            type="primary"
+        )
+
+
 def main():
     """Main application entry point."""
     init_session_state()
@@ -507,11 +826,19 @@ def main():
     # Render sidebar and get settings
     selected_provider, client_data = render_sidebar()
 
-    # Render main form
-    render_main_form(selected_provider, client_data)
+    # Create tabs for single vs batch mode
+    tab_single, tab_batch = st.tabs(["📝 Single Brief", "📊 Batch Upload"])
 
-    # Render results if available
-    render_results()
+    with tab_single:
+        # Render main form
+        render_main_form(selected_provider, client_data)
+
+        # Render results if available
+        render_results()
+
+    with tab_batch:
+        # Render batch upload form
+        render_batch_form(selected_provider)
 
     # Footer
     st.markdown("---")

@@ -12,7 +12,7 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+# lib/ - commented out, we use this for our Python modules
 lib64/
 parts/
 sdist/
