@@ -103,13 +103,13 @@ class DocumentFormatter:
         run.font.size = Pt(self.title_size)
         run.font.bold = True
         run.font.color.rgb = self.header_text
-        para.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
+        para.alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
 
         # Set background color
         self._set_cell_background(title_cell, self.header_bg)
 
         # Add cell padding
-        self._set_cell_padding(title_cell, top=200, bottom=200)
+        self._set_cell_padding(title_cell, top=200, bottom=200, left=300, right=300)
 
         doc.add_paragraph()  # Spacing
 
