@@ -152,7 +152,7 @@ class DocumentFormatter:
         topic = brief_data.get('topic', 'Topic')
 
         para = cell.paragraphs[0]
-        para.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
+        para.alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
         run = para.add_run(f"{client_name} - {topic}")
         run.font.name = self.font_name
         run.font.size = Pt(self.title_size)
